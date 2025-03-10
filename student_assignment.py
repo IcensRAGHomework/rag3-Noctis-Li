@@ -1,3 +1,4 @@
+import os
 import datetime
 import chromadb
 import traceback
@@ -19,7 +20,7 @@ def generate_hw01(debug=False):
         # 初始化Chroma客戶端
         settings = chromadb.config.Settings(persist_directory="chroma.sqlite3")
         chroma_client = chromadb.PersistentClient(path=db_path, settings=settings)
-        
+
         # 設置OpenAI嵌入函數
         openai_ef = embedding_functions.OpenAIEmbeddingFunction(
             api_key=gpt_emb_config['api_key'],
@@ -28,23 +29,46 @@ def generate_hw01(debug=False):
             api_version=gpt_emb_config['api_version'],
             deployment_id=gpt_emb_config['deployment_name']
         )
-        
+
         # 創建/獲取Collection（嚴格匹配參數）
         collection = chroma_client.get_or_create_collection(
             name="TRAVEL",
             metadata={"hnsw:space": "cosine"},
             embedding_function=openai_ef
         )
-        
-        # 讀取並處理CSV數據
-        with open(csv_path, 'r', encoding='utf-8-sig') as file:  # 處理BOM標記
+
+        # 增量更新检查
+        if collection.count() > 0:
+            print("集合已存在数据，启用增量更新模式") if debug else None
+            existing_ids = set(collection.get()['ids'])
+        else:
+            existing_ids = set()
+
+        # 在循環開始前初始化
+        metadata = None
+        data_processed = False
+
+        # CSV数据处理(带格式验证)
+        with open(csv_path, 'r', encoding='utf-8-sig') as file:
             csv_reader = csv.DictReader(file)
             
-            batch_size = 100
-            documents, metadatas, ids = [], [], []
-            
+            # 验证CSV结构
+            required_fields = {'HostWords', 'Name', 'Type', 'Address', 'Tel', 
+                              'City', 'Town', 'CreateDate'}
+            if not required_fields.issubset(csv_reader.fieldnames):
+                missing = required_fields - set(csv_reader.fieldnames)
+                raise KeyError(f"CSV缺少必要字段: {missing}")
+
+            # 批次处理优化
+            batch_size = 500  # 根据API速率限制调整
+            counter = 0
             for i, row in enumerate(csv_reader):
-                # 時間戳轉換（含錯誤處理）
+                # 跳过已存在数据
+                doc_id = f"travel_{i}"
+                if doc_id in existing_ids:
+                    continue
+
+                # 日期解析
                 try:
                     date_obj = datetime.datetime.strptime(
                         row['CreateDate'], 
@@ -55,49 +79,60 @@ def generate_hw01(debug=False):
                     print(f"行 {i+1} 日期解析失敗: {str(e)}")
                     timestamp = 0  # 設置默認值
 
-                # 構建metadata
+                # 元数据构建
                 metadata = {
-                    "file_name": csv_path,
+                    "file_name": os.path.basename(csv_path),
                     "name": row['Name'],
                     "type": row['Type'],
                     "address": row['Address'],
-                    "tel": row['Tel'],
+                    "tel": row.get('Tel', ''),  # 处理可选字段
                     "city": row['City'],
                     "town": row['Town'],
                     "date": timestamp
                 }
-                
-                # 填充數據批次
-                documents.append(row['HostWords'])  # 核心文本字段
-                metadatas.append(metadata)
-                ids.append(f"travel_{i}")
+                data_processed = True
 
                 # 批次提交
-                if (i+1) % batch_size == 0:
+                if counter == 0:
+                    batch_docs, batch_metas, batch_ids = [], [], []
+                
+                batch_docs.append(row['HostWords'])
+                batch_metas.append(metadata)
+                batch_ids.append(doc_id)
+                counter += 1
+
+                if counter >= batch_size:
                     collection.add(
-                        documents=documents,
-                        metadatas=metadatas,
-                        ids=ids
+                        documents=batch_docs,
+                        metadatas=batch_metas,
+                        ids=batch_ids
                     )
-                    documents, metadatas, ids = [], [], []
-            
-            # 提交殘留數據
-            if documents:
+                    counter = 0
+                    if debug:
+                        print(f"已提交批次: {i//batch_size + 1}")
+
+            # 提交残留批次
+            if counter > 0:
                 collection.add(
-                    documents=documents,
-                    metadatas=metadatas,
-                    ids=ids
+                    documents=batch_docs,
+                    metadatas=batch_metas,
+                    ids=batch_ids
                 )
+
+        # 调试信息
         if debug:
-            print(f"數據入庫完成，共處理 {i+1} 條記錄")
-            print(f"元數據範例：{metadata}")  # 打印最後一筆metadata驗證
+            print(f"共處理 {i+1} 條數據 | 數據庫路徑: {os.path.abspath(db_path)}")
+            if data_processed:
+                print(f"示例元數據: {metadata}")
+            else:
+                print("本次未新增任何數據")
+            print(f"集合統計: {collection.count()} 條記錄")
 
         return collection
-    except KeyError as ke:
-        print(f"CSV欄位缺失：{str(ke)}，請檢查CSV結構")
+
     except Exception as e:
-        print(f"致命錯誤：{str(e)}")
         traceback.print_exc()
+        raise RuntimeError(f"數據處理失敗: {str(e)}") from e
     
 def generate_hw02(question, city, store_type, start_date, end_date):
     pass
