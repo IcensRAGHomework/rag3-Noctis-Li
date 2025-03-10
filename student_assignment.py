@@ -51,20 +51,13 @@ def generate_hw01(debug=False):
         # CSV数据处理(带格式验证)
         with open(csv_path, 'r', encoding='utf-8-sig') as file:
             csv_reader = csv.DictReader(file)
-            
-            # 验证CSV结构
-            required_fields = {'HostWords', 'Name', 'Type', 'Address', 'Tel', 
-                              'City', 'Town', 'CreateDate'}
-            if not required_fields.issubset(csv_reader.fieldnames):
-                missing = required_fields - set(csv_reader.fieldnames)
-                raise KeyError(f"CSV缺少必要字段: {missing}")
 
             # 批次处理优化
             batch_size = 500  # 根据API速率限制调整
             counter = 0
             for i, row in enumerate(csv_reader):
                 # 跳过已存在数据
-                doc_id = f"travel_{i}"
+                doc_id = f"{row['ID']}"
                 if doc_id in existing_ids:
                     continue
 
