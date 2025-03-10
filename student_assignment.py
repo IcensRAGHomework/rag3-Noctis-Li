@@ -12,12 +12,13 @@ gpt_emb_version = 'text-embedding-ada-002'
 gpt_emb_config = get_model_configuration(gpt_emb_version)
 
 db_path = "./"
-csv_path = "./COA_OpenData.csv"
+csv_path = "COA_OpenData.csv"
 
-def generate_hw01():
+def generate_hw01(debug=False):
     try:
         # 初始化Chroma客戶端
-        chroma_client = chromadb.PersistentClient(path=db_path)
+        settings = chromadb.config.Settings(persist_directory="chroma.sqlite3")
+        chroma_client = chromadb.PersistentClient(path=db_path, settings=settings)
         
         # 設置OpenAI嵌入函數
         openai_ef = embedding_functions.OpenAIEmbeddingFunction(
@@ -56,7 +57,7 @@ def generate_hw01():
 
                 # 構建metadata
                 metadata = {
-                    "file_name": csv_path.split("/")[-1],
+                    "file_name": csv_path,
                     "name": row['Name'],
                     "type": row['Type'],
                     "address": row['Address'],
@@ -87,9 +88,9 @@ def generate_hw01():
                     metadatas=metadatas,
                     ids=ids
                 )
-
-        print(f"數據入庫完成，共處理 {i+1} 條記錄")
-        print(f"元數據範例：{metadata}")  # 打印最後一筆metadata驗證
+        if debug:
+            print(f"數據入庫完成，共處理 {i+1} 條記錄")
+            print(f"元數據範例：{metadata}")  # 打印最後一筆metadata驗證
 
         return collection
     except KeyError as ke:
