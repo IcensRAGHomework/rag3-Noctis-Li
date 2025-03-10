@@ -124,7 +124,60 @@ def generate_hw02(question, city, store_type, start_date, end_date):
     return filtered_results[:10]
 
 def generate_hw03(question, store_name, new_store_name, city, store_type):
-    pass
+    collection = generate_hw01()
+    # 更新指定店家的元数据
+    try:
+        # 查找目標店家
+        target = collection.get(
+            where={"name": {"$eq": store_name}},
+            include=["metadatas"]
+        )
+        
+        # 更新元数据
+        if target['ids']:
+            new_metadata = target['metadatas'][0].copy()
+            new_metadata["new_store_name"] = new_store_name
+            collection.update(
+                ids=target['ids'][0],
+                metadatas=new_metadata
+            )
+    except Exception as e:
+        print(f"更新失敗: {str(e)}")
+    
+    # 構建查詢條件
+    where_conditions = {"$and": []}
+    if city:
+        where_conditions["$and"].append({"city": {"$in": city}})
+    if store_type:
+        where_conditions["$and"].append({"type": {"$in": store_type}})
+    
+    # 執行語意查詢
+    results = collection.query(
+        query_texts=[question],
+        n_results=10,
+        where=where_conditions if where_conditions["$and"] else None,
+        include=["metadatas", "distances"]
+    )
+    
+    # 處理結果並過濾
+    filtered = []
+    for distance, meta in zip(results['distances'][0], results['metadatas'][0]):
+        similarity = 1 - distance
+        if similarity >= 0.80:
+            display_name = meta.get("new_store_name", meta['name'])  # 優先顯示新名稱
+            filtered.append({
+                "name": display_name,
+                "score": round(similarity, 3),
+                "original_name": meta['name']
+            })
+    
+    # 排序與去重
+    sorted_results = sorted(filtered, key=lambda x: x['score'], reverse=True)
+    seen = set()
+    final = [x['name'] for x in sorted_results 
+             if not (x['original_name'] in seen or seen.add(x['original_name']))]
+    
+    return final[:10]  # 確保最多返回10個
 
 def demo(question):
     chroma_client = chromadb.PersistentClient(path=db_path)
