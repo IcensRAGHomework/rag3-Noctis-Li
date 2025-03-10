@@ -50,29 +50,17 @@ def generate_hw01(debug=False):
 
                 for i, row in enumerate(csv_reader):
 
-                    # 日期解析
-                    try:
-                        date_obj = datetime.datetime.strptime(
-                            row['CreateDate'], 
-                            "%Y-%m-%d"  # 根據實際格式調整
-                        )
-                        timestamp = int(date_obj.timestamp())
-                    except Exception as e:
-                        print(f"行 {i+1} 日期解析失敗: {str(e)}")
-                        timestamp = 0  # 設置默認值
-
                     # 元数据构建
                     metadata = {
-                        "file_name": os.path.basename(csv_path),
+                        "file_name": csv_path,
                         "name": row['Name'],
                         "type": row['Type'],
                         "address": row['Address'],
                         "tel": row.get('Tel', ''),  # 处理可选字段
                         "city": row['City'],
                         "town": row['Town'],
-                        "date": timestamp
+                        "date": datetime.datetime.strptime(row["CreateDate"], '%Y-%m-%d').timestamp()
                     }
-                    data_processed = True
 
                     batch_docs.append(row['HostWords'])
                     batch_metas.append(metadata)
