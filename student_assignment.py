@@ -89,7 +89,39 @@ def generate_hw01(debug=False):
         raise RuntimeError(f"數據處理失敗: {str(e)}") from e
 
 def generate_hw02(question, city, store_type, start_date, end_date):
-    pass
+    collection = generate_hw01()
+    # 构建查询条件
+    where_conditions = {"$and": []}
+    where_conditions["$and"].append(
+            {"city": {"$in": city}}
+        )
+    where_conditions["$and"].append(
+            {"type": {"$in": store_type}}  # 確保使用列表值
+        )
+    where_conditions["$and"].append(
+            {"date": {"$gte": int(start_date.timestamp())}}
+        )
+    where_conditions["$and"].append(
+            {"date": {"$lte": int(end_date.timestamp())}}
+        )
+    print(where_conditions)
+
+    # 执行查询
+    results = collection.query(
+        query_texts=[question],
+        n_results=10,
+        where=where_conditions if where_conditions else None,
+        include=["metadatas", "distances"]
+    )
+
+    # 处理结果
+    filtered_results = []
+    for distance, metadata in zip(results['distances'][0], results['metadatas'][0]):
+        similarity = 1 - distance  # 余弦相似度转换
+        if similarity >= 0.80:
+            filtered_results.append(metadata['name'])
+    
+    return filtered_results[:10]
 
 def generate_hw03(question, store_name, new_store_name, city, store_type):
     pass
